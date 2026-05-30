@@ -5643,8 +5643,6 @@ window._pendingSaveTs = 0;
   };
 
   // ── Login ด้วย Firebase Auth ──────────────────────────────
-  // Override authLogin ที่มีอยู่เดิม ถ้า GAS URL ไม่ได้ตั้งค่า
-  var _origAuthLogin = window.authLogin;
   window.authLogin = async function() {
     var email    = (document.getElementById('loginEmail').value || '').trim();
     var password = document.getElementById('loginPassword').value;
@@ -5661,23 +5659,29 @@ window._pendingSaveTs = 0;
 
     try {
       var cred = await auth.signInWithEmailAndPassword(email, password);
-      // ดึงข้อมูลจาก Firestore
-      var doc = await db.collection('members').doc(cred.user.uid).get();
-      var userData = doc.exists ? doc.data() : { fullname: email, role: 'user' };
-      // ใช้ระบบ session เดิม
-      if (typeof _localLogin === 'function') {
-        _localLogin({ email: email, name: userData.fullname || email, role: userData.role || 'user' });
-      } else {
-        currentUser = { email: email, name: userData.fullname || email, role: 'user' };
-        if (typeof closeAuthModal === 'function') closeAuthModal();
-        if (typeof _applyAuthUI === 'function') _applyAuthUI();
-      }
+      var uid  = cred.user.uid;
+
+      // พยายามดึงข้อมูลจาก Firestore (ถ้าไม่ได้ก็ใช้ email แทน)
+      var fullname = email;
+      try {
+        var doc = await db.collection('members').doc(uid).get();
+        if (doc.exists) fullname = doc.data().fullname || email;
+      } catch(e) {}
+
+      // ใช้ระบบ session เดิม (_setLoggedIn + closeAuthModal)
+      var userObj = { id: uid, name: fullname, email: email, uid: uid };
+      if (typeof _setLoggedIn === 'function') _setLoggedIn(userObj);
+      if (typeof closeAuthModal === 'function') closeAuthModal();
+      if (typeof updateDashboard === 'function') updateDashboard();
+      if (typeof showToast === 'function') showToast('👋 ยินดีต้อนรับ ' + fullname, 2500);
+
     } catch (err) {
-      var msg = '❌ ' + err.message;
-      if (err.code === 'auth/user-not-found')   msg = '❌ ไม่พบบัญชีผู้ใช้นี้';
-      if (err.code === 'auth/wrong-password')   msg = '❌ รหัสผ่านไม่ถูกต้อง';
-      if (err.code === 'auth/invalid-email')    msg = '❌ รูปแบบอีเมลไม่ถูกต้อง';
+      var msg = '❌ เกิดข้อผิดพลาด';
+      if (err.code === 'auth/user-not-found')     msg = '❌ ไม่พบบัญชีผู้ใช้นี้';
+      if (err.code === 'auth/wrong-password')     msg = '❌ รหัสผ่านไม่ถูกต้อง';
+      if (err.code === 'auth/invalid-email')      msg = '❌ รูปแบบอีเมลไม่ถูกต้อง';
       if (err.code === 'auth/invalid-credential') msg = '❌ Email หรือรหัสผ่านไม่ถูกต้อง';
+      if (err.code === 'auth/too-many-requests')  msg = '❌ ลองใหม่อีกครั้งในภายหลัง';
       if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
       if (btn) { btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'; }
     }
