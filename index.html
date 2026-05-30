@@ -5350,7 +5350,9 @@ function _wrapFullHTML(bodyHTML, title) {
 </style>
 </head>
 <body>${bodyHTML}
-
+</body>
+</html>`;
+}
 
 /* ─── Client-side PDF fallback (jsPDF + html2canvas) ─── */
 async function _generatePDFClientSide(bodyHTML, fileName) {
